@@ -1,257 +1,307 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Zoomable Chaos Fractal Generator (Seamless Loop)</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: #000;
-      overflow: hidden;
-      font-family: sans-serif;
-      color: white;
-    }
-    h2 {
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 2;
-      text-align: center;
-    }
-    canvas {
-      display: block;
-      width: 100vw;
-      height: 100vh;
-      background: #000;
-    }
-    .controls {
-      position: absolute;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 10px;
-      z-index: 2;
-    }
-    button, select, input[type=range] {
-      padding: 10px;
-      font-size: 14px;
-      border-radius: 5px;
-      border: none;
-      cursor: pointer;
-    }
-    label {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Seamless Looping Chaos Fractal (Responsive)</title>
+<style>
+  :root {
+    --pad: 10px;
+  }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: #000;
+    color: #fff;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    overflow: hidden; /* avoid iframe scrollbars */
+  }
+  /* Wrapper lets us size by parent container (works in Google Sites) */
+  .wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    z-index: 0;
+  }
+  .title {
+    position: absolute;
+    top: var(--pad);
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 0;
+    z-index: 2;
+    pointer-events: none;
+    text-align: center;
+    line-height: 1.1;
+    font-weight: 700;
+    /* fluid font size */
+    font-size: clamp(18px, 4vw, 32px);
+  }
+  .controls {
+    position: absolute;
+    left: 50%;
+    bottom: var(--pad);
+    transform: translateX(-50%);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    align-items: center;
+    justify-content: center;
+    z-index: 3;
+    padding: 6px 8px;
+    max-width: 96%;
+  }
+  .controls > * {
+    font-size: clamp(12px, 3.2vw, 16px);
+  }
+  button, select {
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: #eee;
+    color: #111;
+    cursor: pointer;
+  }
+  label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    background: rgba(0,0,0,.35);
+    padding: 4px 8px;
+    border-radius: 8px;
+  }
+  input[type="range"] {
+    width: clamp(120px, 30vw, 220px);
+  }
+</style>
 </head>
 <body>
-  <h2>🌈 Seamless Looping Chaos Fractal Generator</h2>
-  <canvas id="canvas"></canvas>
-  <div class="controls">
-    <button onclick="randomizeFractal()">🎲 Randomize</button>
-    <button onclick="startRecording()">🎥 Record 10s & Download</button>
-    <button onclick="setZoomMode('bounce')">Bounce Zoom</button>
-    <button onclick="setZoomMode('endless')">Endless Zoom</button>
-    <label>Zoom: <input type="range" id="zoomAmount" min="0" max="0.3" step="0.001" value="0.05"></label>
-    <label>Fade: <input type="range" id="fadeIntensity" min="0" max="0.2" step="0.01" value="0.04"></label>
-    <label>Colors:
-      <select id="colorPreset" onchange="applyColorPreset()">
-        <option value="rainbow">Rainbow</option>
-        <option value="neon">Neon</option>
-        <option value="pastel">Pastel</option>
-        <option value="white">White</option>
-      </select>
-    </label>
+  <div class="wrap" id="wrap">
+    <h2 class="title">🌈 Seamless Looping Chaos Fractal Generator</h2>
+    <canvas id="view"></canvas>
+
+    <div class="controls">
+      <button id="btnRand">🎲 Randomize</button>
+      <button id="btnRec">🎥 Record 10s & Download</button>
+      <button data-mode="bounce">Bounce Zoom</button>
+      <button data-mode="endless">Endless Zoom</button>
+
+      <label>Zoom:
+        <input type="range" id="zoomAmount" min="0" max="0.3" step="0.001" value="0.05">
+      </label>
+      <label>Fade:
+        <input type="range" id="fadeIntensity" min="0" max="0.2" step="0.01" value="0.04">
+      </label>
+      <label>Colors:
+        <select id="colorPreset">
+          <option value="rainbow">Rainbow</option>
+          <option value="neon">Neon</option>
+          <option value="pastel">Pastel</option>
+          <option value="white">White</option>
+        </select>
+      </label>
+    </div>
   </div>
 
-  <script>
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
+<script>
+(() => {
+  // Visible canvas (sized to parent), high-DPI aware
+  const wrap = document.getElementById('wrap');
+  const canvas = document.getElementById('view');
+  const ctx = canvas.getContext('2d');
 
-    // Offscreen buffer canvas for recording
-    const bufferCanvas = document.createElement("canvas");
-    bufferCanvas.width = 1920;
-    bufferCanvas.height = 1080;
-    const bufferCtx = bufferCanvas.getContext("2d");
+  // Offscreen buffer for 1920x1080 master render (used for recording & upscale)
+  const buffer = document.createElement('canvas');
+  buffer.width = 1920; buffer.height = 1080;
+  const bctx = buffer.getContext('2d');
 
-    let vertices = [];
-    let point = {};
-    let frame = 0;
-    const totalFrames = 600;
-    let animationId;
-    let colors = [];
-    let zoomMode = 'bounce';
+  // UI
+  const zoomRange = document.getElementById('zoomAmount');
+  const fadeRange = document.getElementById('fadeIntensity');
+  const presetSel = document.getElementById('colorPreset');
 
-    const presets = {
-      rainbow: ["#00f7ff", "#ff00e6", "#fff200", "#00ff8f", "#ff6a00", "#ff3366", "#33ff66", "#66ccff"],
-      neon: ["#39ff14", "#ff073a", "#0ff", "#f0f", "#ffea00", "#00f0ff"],
-      pastel: ["#ffb3ba", "#ffdfba", "#ffffba", "#baffc9", "#bae1ff"],
-      white: ["#ffffff"]
+  document.getElementById('btnRand').onclick = randomizeFractal;
+  document.getElementById('btnRec').onclick  = startRecording;
+  document.querySelectorAll('button[data-mode]').forEach(b => {
+    b.onclick = () => { zoomMode = b.dataset.mode; frame = 0; };
+  });
+  presetSel.onchange = applyColorPreset;
+
+  // State
+  let vertices = [];
+  let point = {};
+  let frame = 0;
+  const totalFrames = 600;
+  let animationId = null;
+  let colors = [];
+  let zoomMode = 'bounce';
+
+  const presets = {
+    rainbow: ["#00f7ff","#ff00e6","#fff200","#00ff8f","#ff6a00","#ff3366","#33ff66","#66ccff"],
+    neon:    ["#39ff14","#ff073a","#0ff","#f0f","#ffea00","#00f0ff"],
+    pastel:  ["#ffb3ba","#ffdfba","#ffffba","#baffc9","#bae1ff"],
+    white:   ["#ffffff"]
+  };
+
+  function applyColorPreset() {
+    colors = presets[presetSel.value] || presets.rainbow;
+  }
+
+  // Resize to parent container (works in iframes / Google Sites)
+  function resizeToParent() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = wrap.getBoundingClientRect(); // actual embedded area
+    canvas.width  = Math.max(1, Math.floor(rect.width  * dpr));
+    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+    // Reset + scale so drawing uses CSS pixels
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.scale(dpr, dpr);
+    // Also store CSS pixel size for layout math
+    canvas._cssW = rect.width;
+    canvas._cssH = rect.height;
+  }
+
+  // Observe container size changes (orientation, editor drag, etc.)
+  const ro = new ResizeObserver(resizeToParent);
+  ro.observe(wrap);
+  // Initial
+  applyColorPreset();
+  resizeToParent();
+
+  function randomizeFractal() {
+    const shapes = ["circle","star","flower","spiral","blob","noise"];
+    const shape = shapes[Math.floor(Math.random()*shapes.length)];
+
+    const cx = buffer.width / 2;
+    const cy = buffer.height / 2;
+    const radius = 480;
+    const numPoints = shape === "circle" ? 3 + Math.floor(Math.random()*5) : 100;
+
+    vertices = [];
+    if (shape === "circle") {
+      for (let i=0;i<numPoints;i++){
+        const a = i * 2*Math.PI/numPoints;
+        vertices.push({x: cx + Math.cos(a)*radius, y: cy + Math.sin(a)*radius});
+      }
+    } else if (shape === "star") {
+      const spikes = 5 + Math.floor(Math.random()*5);
+      for (let i=0;i<spikes*2;i++){
+        const a = i * Math.PI/spikes;
+        const r = (i%2===0) ? radius : radius/2;
+        vertices.push({x: cx + Math.cos(a)*r, y: cy + Math.sin(a)*r});
+      }
+    } else if (shape === "flower") {
+      const petals = 5 + Math.floor(Math.random()*5);
+      for (let i=0;i<petals*10;i++){
+        const a = i * 2*Math.PI/(petals*10);
+        const r = radius * Math.sin(petals*a);
+        vertices.push({x: cx + Math.cos(a)*r, y: cy + Math.sin(a)*r});
+      }
+    } else if (shape === "spiral") {
+      for (let i=0;i<numPoints;i++){
+        const a = 0.2*i, r = 0.5*i;
+        vertices.push({x: cx + Math.cos(a)*r, y: cy + Math.sin(a)*r});
+      }
+    } else if (shape === "blob") {
+      for (let i=0;i<numPoints;i++){
+        const a = i * 2*Math.PI/numPoints;
+        const r = radius * (0.8 + Math.random()*0.4);
+        vertices.push({x: cx + Math.cos(a)*r, y: cy + Math.sin(a)*r});
+      }
+    } else { // noise
+      for (let i=0;i<numPoints;i++){
+        vertices.push({x: Math.random()*buffer.width, y: Math.random()*buffer.height});
+      }
+    }
+
+    point = { x: Math.random()*buffer.width, y: Math.random()*buffer.height };
+    frame = 0;
+
+    // clear both
+    ctx.fillStyle = "#000"; ctx.fillRect(0,0,canvas._cssW,canvas._cssH);
+    bctx.fillStyle = "#000"; bctx.fillRect(0,0,buffer.width,buffer.height);
+
+    cancelAnimationFrame(animationId);
+    drawFrame();
+  }
+
+  function drawFrame() {
+    const fade = parseFloat(fadeRange.value);
+    const zoomAmount = parseFloat(zoomRange.value);
+
+    // fade both
+    bctx.globalAlpha = 1;
+    bctx.fillStyle = `rgba(0,0,0,${fade})`;
+    bctx.fillRect(0,0,buffer.width,buffer.height);
+
+    let zoom = 1;
+    if (zoomMode === 'bounce') {
+      zoom = 1 + Math.sin((frame/totalFrames)*2*Math.PI) * zoomAmount;
+    } else {
+      zoom = 1 + (frame * zoomAmount / totalFrames);
+    }
+
+    // render points to buffer (master space)
+    for (let i=0;i<5000;i++){
+      const seed = Math.sin((frame + i)*0.05)*1000;
+      const idx = Math.abs(Math.floor(seed)) % vertices.length;
+      const v = vertices[idx];
+      point.x = (point.x + v.x) / 2;
+      point.y = (point.y + v.y) / 2;
+
+      const zx = (point.x - buffer.width/2)*zoom + buffer.width/2;
+      const zy = (point.y - buffer.height/2)*zoom + buffer.height/2;
+
+      bctx.fillStyle = colors[(frame + i) % colors.length];
+      bctx.fillRect(zx|0, zy|0, 1, 1);
+    }
+
+    // draw buffer into visible canvas with "cover" fit (no stretch, center crop)
+    const cssW = canvas._cssW, cssH = canvas._cssH;
+    const scale = Math.max(cssW / buffer.width, cssH / buffer.height);
+    const dw = buffer.width * scale;
+    const dh = buffer.height * scale;
+    const dx = (cssW - dw) / 2;
+    const dy = (cssH - dh) / 2;
+
+    // clear then draw
+    ctx.clearRect(0,0,cssW,cssH);
+    ctx.drawImage(buffer, dx, dy, dw, dh);
+
+    frame = (frame + 1) % totalFrames;
+    animationId = requestAnimationFrame(drawFrame);
+  }
+
+  function startRecording() {
+    // Record the master buffer at 1920x1080
+    const stream = buffer.captureStream(60);
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    const chunks = [];
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'fractal_loop.webm'; a.click();
+      URL.revokeObjectURL(url);
     };
+    recorder.start();
+    setTimeout(() => recorder.stop(), 10000);
+  }
 
-    function applyColorPreset() {
-      const selected = document.getElementById("colorPreset").value;
-      colors = presets[selected];
-    }
-
-    function setZoomMode(mode) {
-      zoomMode = mode;
-      frame = 0;
-    }
-
-    function resizeCanvas() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    }
-
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-
-    function randomizeFractal() {
-      const shapeTypes = ["circle", "star", "flower", "spiral", "blob", "noise"];
-      const shape = shapeTypes[Math.floor(Math.random() * shapeTypes.length)];
-
-      const centerX = bufferCanvas.width / 2;
-      const centerY = bufferCanvas.height / 2;
-      const radius = 480;
-      const numPoints = shape === "circle" ? 3 + Math.floor(Math.random() * 5) : 100;
-
-      vertices = [];
-
-      if (shape === "circle") {
-        vertices = Array.from({ length: numPoints }, (_, i) => ({
-          x: centerX + Math.cos(i * 2 * Math.PI / numPoints) * radius,
-          y: centerY + Math.sin(i * 2 * Math.PI / numPoints) * radius
-        }));
-      } else if (shape === "star") {
-        const spikes = 5 + Math.floor(Math.random() * 5);
-        for (let i = 0; i < spikes * 2; i++) {
-          const angle = i * Math.PI / spikes;
-          const r = i % 2 === 0 ? radius : radius / 2;
-          vertices.push({
-            x: centerX + Math.cos(angle) * r,
-            y: centerY + Math.sin(angle) * r
-          });
-        }
-      } else if (shape === "flower") {
-        const petals = 5 + Math.floor(Math.random() * 5);
-        for (let i = 0; i < petals * 10; i++) {
-          const angle = i * (Math.PI * 2) / (petals * 10);
-          const r = radius * Math.sin(petals * angle);
-          vertices.push({
-            x: centerX + r * Math.cos(angle),
-            y: centerY + r * Math.sin(angle)
-          });
-        }
-      } else if (shape === "spiral") {
-        for (let i = 0; i < numPoints; i++) {
-          const angle = 0.2 * i;
-          const r = 0.5 * i;
-          vertices.push({
-            x: centerX + r * Math.cos(angle),
-            y: centerY + r * Math.sin(angle)
-          });
-        }
-      } else if (shape === "blob") {
-        for (let i = 0; i < numPoints; i++) {
-          const angle = i * (Math.PI * 2 / numPoints);
-          const r = radius * (0.8 + Math.random() * 0.4);
-          vertices.push({
-            x: centerX + r * Math.cos(angle),
-            y: centerY + r * Math.sin(angle)
-          });
-        }
-      } else {
-        for (let i = 0; i < numPoints; i++) {
-          vertices.push({
-            x: Math.random() * bufferCanvas.width,
-            y: Math.random() * bufferCanvas.height
-          });
-        }
-      }
-
-      point = {
-        x: Math.random() * bufferCanvas.width,
-        y: Math.random() * bufferCanvas.height
-      };
-
-      frame = 0;
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      bufferCtx.fillStyle = "#000";
-      bufferCtx.fillRect(0, 0, bufferCanvas.width, bufferCanvas.height);
-      cancelAnimationFrame(animationId);
-      drawFrame();
-    }
-
-    function drawFrame() {
-      const fade = parseFloat(document.getElementById("fadeIntensity").value);
-      const zoomAmount = parseFloat(document.getElementById("zoomAmount").value);
-
-      [ctx, bufferCtx].forEach(context => {
-        context.globalAlpha = 1;
-        context.fillStyle = `rgba(0, 0, 0, ${fade})`;
-        context.fillRect(0, 0, context.canvas.width, context.canvas.height);
-      });
-
-      let zoom = 1;
-      if (zoomMode === 'bounce') {
-        zoom = 1 + Math.sin((frame / totalFrames) * 2 * Math.PI) * zoomAmount;
-      } else if (zoomMode === 'endless') {
-        zoom = 1 + (frame * zoomAmount / totalFrames);
-      }
-
-      for (let i = 0; i < 5000; i++) {
-        const seed = Math.sin((frame + i) * 0.05) * 1000;
-        const index = Math.abs(Math.floor(seed) % vertices.length);
-        const v = vertices[index];
-
-        point.x = (point.x + v.x) / 2;
-        point.y = (point.y + v.y) / 2;
-
-        [ctx, bufferCtx].forEach(context => {
-          const w = context.canvas.width;
-          const h = context.canvas.height;
-          const zx = (point.x - w / 2) * zoom + w / 2;
-          const zy = (point.y - h / 2) * zoom + h / 2;
-          const color = colors[(frame + i) % colors.length];
-          context.fillStyle = color;
-          context.fillRect(Math.round(zx), Math.round(zy), 1, 1);
-        });
-      }
-
-      frame = (frame + 1) % totalFrames;
-      animationId = requestAnimationFrame(drawFrame);
-    }
-
-    function startRecording() {
-      const stream = bufferCanvas.captureStream(60);
-      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-      const chunks = [];
-
-      recorder.ondataavailable = e => chunks.push(e.data);
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'fractal_loop_seamless.webm';
-        a.click();
-      };
-
-      recorder.start();
-      setTimeout(() => recorder.stop(), 10000);
-    }
-
-    applyColorPreset();
-    randomizeFractal();
-  </script>
+  // boot
+  randomizeFractal();
+})();
+</script>
 </body>
 </html>
